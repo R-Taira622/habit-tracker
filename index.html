@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>習慣化記録トラッカー</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#121212">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style id="theme-style"></style>
+  <style>
+    .calendar {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 5px;
+      margin-top: 10px;
+    }
+    .day {
+      text-align: center;
+      padding: 10px;
+      border-radius: 5px;
+      user-select: none;
+      cursor: pointer;
+    }
+    .saturday {
+      color: #64b5f6;
+    }
+    .sunday, .holiday {
+      color: #ef5350;
+    }
+    .checked {
+      background-color: #4caf50;
+      color: white;
+    }
+    .unchecked {
+      background-color: #f44336;
+      color: white;
+    }
+    #overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 999;
+    }
+    #modal {
+      display: none;
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: #222;
+      color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      z-index: 1000;
+      min-width: 250px;
+      box-sizing: border-box;
+    }
+    #modal input[type="text"] {
+      width: 100%;
+      margin-top: 10px;
+      padding: 5px;
+      box-sizing: border-box;
+    }
+    #modal-buttons {
+      margin-top: 10px;
+      text-align: right;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+      background-color: #121212;
+      color: #fff;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      padding: 10px;
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .month-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 10px 0;
+    }
+    .month-nav button {
+      background-color: #333;
+      color: #fff;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #today-entry {
+      margin: 20px 0;
+    }
+    @media (max-width: 480px) {
+      .calendar {
+        grid-template-columns: repeat(7, 1fr);
+      }
+      .day {
+        font-size: 14px;
+        padding: 8px;
+      }
+      h1 {
+        font-size: 1.5em;
+        text-align: center;
+      }
+      .button-group button, .save-btn {
+        flex: 1;
+        font-size: 0.9em;
+        padding: 8px;
+      }
+    }
+  </style>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js')
+          .then(reg => console.log('Service Worker registered:', reg.scope))
+          .catch(err => console.error('Service Worker registration failed:', err));
+      });
+    }
+  </script>
+</head>
+<body>
+  <div class="container">
+    <h1>習慣化記録トラッカー</h1>
+    <div id="today-entry">
+      <strong>今日の記録:</strong><br>
+      <input type="text" id="today-comment" placeholder="今日のコメントを書く">
+      <div class="button-group">
+        <button onclick="saveToday(true)">行動した！</button>
+        <button onclick="saveToday(false)">しなかった…</button>
+      </div>
+    </div>
+    <div class="month-nav">
+      <button onclick="changeMonth(-1)">← 前の月</button>
+      <span id="month-display"></span>
+      <button onclick="changeMonth(1)">次の月 →</button>
+    </div>
+    <div class="calendar" id="calendar"></div>
+  </div>
+
+  <div id="overlay"></div>
+  <div id="modal">
+    <div id="modal-date"></div>
+    <label>コメント:</label>
+    <input type="text" id="modal-comment" placeholder="1行コメント">
+    <div id="modal-buttons">
+      <button onclick="saveData(true)">行動した！</button>
+      <button onclick="saveData(false)">しなかった…</button>
+      <button onclick="closeModal()">閉じる</button>
+    </div>
+  </div>
+
+  <script>
+    const calendar = document.getElementById("calendar");
+    const monthDisplay = document.getElementById("month-display");
+    const today = new Date();
+    let currentYear = today.getFullYear();
+    let currentMonth = today.getMonth();
+    const data = JSON.parse(localStorage.getItem("habitData") || "{}");
+
+    function generateCalendar() {
+      calendar.innerHTML = "";
+      const startDate = new Date(currentYear, currentMonth, 1);
+      const endDate = new Date(currentYear, currentMonth + 1, 0);
+      const startDay = startDate.getDay();
+      const daysInMonth = endDate.getDate();
+
+      monthDisplay.textContent = `${currentYear}年 ${currentMonth + 1}月`;
+
+      for (let i = 0; i < startDay; i++) {
+        calendar.appendChild(document.createElement("div"));
+      }
+
+      for (let i = 1; i <= daysInMonth; i++) {
+        const dateKey = `${currentYear}-${currentMonth+1}-${i}`;
+        const dayElem = document.createElement("div");
+        const day = new Date(currentYear, currentMonth, i).getDay();
+        dayElem.className = "day";
+        if (day === 6) dayElem.classList.add("saturday");
+        if (day === 0) dayElem.classList.add("sunday");
+        if (data[dateKey]?.status) {
+          dayElem.classList.add("checked");
+        } else if (data[dateKey]?.status === false) {
+          dayElem.classList.add("unchecked");
+        }
+        dayElem.textContent = i;
+        dayElem.onclick = () => openModal(dateKey, i);
+        calendar.appendChild(dayElem);
+      }
+    }
+
+    function openModal(dateKey, displayDay) {
+      document.getElementById("modal-date").textContent = `${dateKey}`;
+      document.getElementById("modal-comment").value = data[dateKey]?.comment || "";
+      document.getElementById("overlay").style.display = "block";
+      document.getElementById("modal").style.display = "block";
+      currentEditingDate = dateKey;
+    }
+
+    function closeModal() {
+      document.getElementById("overlay").style.display = "none";
+      document.getElementById("modal").style.display = "none";
+    }
+
+    let currentEditingDate = null;
+
+    function saveData(didDevelop) {
+      if (!currentEditingDate) return;
+      const comment = document.getElementById("modal-comment").value;
+      data[currentEditingDate] = { status: didDevelop, comment };
+      localStorage.setItem("habitData", JSON.stringify(data));
+      closeModal();
+      generateCalendar();
+    }
+
+    function changeMonth(offset) {
+      currentMonth += offset;
+      if (currentMonth < 0) {
+        currentMonth = 11;
+        currentYear--;
+      } else if (currentMonth > 11) {
+        currentMonth = 0;
+        currentYear++;
+      }
+      generateCalendar();
+    }
+
+    function saveToday(didDevelop) {
+      const comment = document.getElementById("today-comment").value;
+      const key = `${today.getFullYear()}-${today.getMonth()+1}-${today.getDate()}`;
+      data[key] = { status: didDevelop, comment };
+      localStorage.setItem("habitData", JSON.stringify(data));
+      generateCalendar();
+      document.getElementById("today-comment").value = "";
+    }
+
+    generateCalendar();
+  </script>
+</body>
+</html>
