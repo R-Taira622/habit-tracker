@@ -45,7 +45,6 @@ habit-tracker/
 ## 🧠 開発メモ
 
 - 使用言語：HTML / CSS / JavaScript（フレームワーク不使用）
-- 使用ライブラリ：Chart.js（※達成率グラフ等に使用可能）
 - オフライン対応：Service Worker によるキャッシュ
 
 ## 🧑‍💻 作者
